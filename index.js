@@ -1,3 +1,4 @@
+```javascript
 // Genshin RPG Time
 // SillyTavern 1.18.0
 
@@ -8,7 +9,7 @@
     const MINUTES_PER_DAY = 1440;
 
     // =========================================================
-    // Контекст SillyTavern
+    // SillyTavern context
     // =========================================================
 
     function getContext() {
@@ -26,7 +27,7 @@
     }
 
     // =========================================================
-    // Локальные переменные текущего чата
+    // Local variables
     // =========================================================
 
     function getVariable(name) {
@@ -46,35 +47,32 @@
             throw new Error('API локальных переменных недоступен.');
         }
 
-        context.variables.local.set(name, value);
+        return context.variables.local.set(name, value);
     }
 
     // =========================================================
-    // Нормализация времени
+    // Time helpers
     // =========================================================
 
-    function normalizeTime(value) {
-        let time = Math.floor(Number(value));
+    function normalizeTime(minutes) {
+        minutes = Math.floor(Number(minutes));
 
-        if (!Number.isFinite(time)) {
-            time = 0;
+        if (!Number.isFinite(minutes)) {
+            minutes = 0;
         }
 
-        return ((time % MINUTES_PER_DAY) + MINUTES_PER_DAY)
-            % MINUTES_PER_DAY;
+        return ((minutes % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
     }
-
-    // =========================================================
-    // Получить текущее время
-    // =========================================================
 
     function getCurrentTime() {
-        return normalizeTime(getVariable('Время'));
-    }
+        const value = getVariable('Время');
 
-    // =========================================================
-    // Сохранить время
-    // =========================================================
+        if (value === undefined || value === null || value === '') {
+            return 0;
+        }
+
+        return normalizeTime(value);
+    }
 
     function saveTime(totalMinutes) {
         totalMinutes = normalizeTime(totalMinutes);
@@ -90,16 +88,12 @@
             total: totalMinutes,
             hours: hours,
             minutes: minutes,
-            text:
+            formatted:
                 String(hours).padStart(2, '0') +
                 ':' +
                 String(minutes).padStart(2, '0')
         };
     }
-
-    // =========================================================
-    // Форматирование
-    // =========================================================
 
     function formatTime(totalMinutes) {
         totalMinutes = normalizeTime(totalMinutes);
@@ -114,17 +108,35 @@
         );
     }
 
-    // =========================================================
-    // Изменение времени
-    // =========================================================
-
     function changeTime(amount) {
         const current = getCurrentTime();
         return saveTime(current + amount);
     }
 
     // =========================================================
-    // Парсер длительности
+    // Arguments
+    //
+    // В ST 1.18.0:
+    //
+    // callback(namedArguments, unnamedArguments)
+    //
+    // Поэтому здесь аккуратно получаем второй аргумент.
+    // =========================================================
+
+    function getArgumentValue(unnamedArguments) {
+        if (unnamedArguments === undefined || unnamedArguments === null) {
+            return '';
+        }
+
+        if (Array.isArray(unnamedArguments)) {
+            return unnamedArguments.join(' ').trim();
+        }
+
+        return String(unnamedArguments).trim();
+    }
+
+    // =========================================================
+    // Duration parser
     //
     // 30       = 30 минут
     // +30      = +30 минут
@@ -136,11 +148,7 @@
     // =========================================================
 
     function parseDuration(input) {
-        if (input === undefined || input === null) {
-            return null;
-        }
-
-        let text = String(input)
+        let text = String(input ?? '')
             .trim()
             .toLowerCase()
             .replace(/\s+/g, '');
@@ -149,10 +157,11 @@
             return null;
         }
 
-        // Обычное число = минуты
+        // Просто число = минуты
 
         if (/^[+-]?\d+$/.test(text)) {
             const result = Number(text);
+
             return Number.isFinite(result) ? result : null;
         }
 
@@ -172,16 +181,12 @@
         let total = 0;
         let found = false;
 
-        // Часы
-
         const hoursMatch = text.match(/(\d+(?:\.\d+)?)ч/);
 
         if (hoursMatch) {
             total += Number(hoursMatch[1]) * 60;
             found = true;
         }
-
-        // Минуты
 
         const minutesMatch = text.match(/(\d+)м/);
 
@@ -198,11 +203,16 @@
     }
 
     // =========================================================
-    // Парсер конкретного времени ЧЧ:ММ
+    // Clock parser
+    //
+    // 00:00
+    // 09:30
+    // 18:45
+    // 23:59
     // =========================================================
 
     function parseClockTime(input) {
-        const text = String(input || '').trim();
+        const text = String(input ?? '').trim();
 
         const match = text.match(/^(\d{1,2}):(\d{1,2})$/);
 
@@ -232,7 +242,7 @@
     }
 
     // =========================================================
-    // Регистрация slash-команд
+    // Slash command registration
     // =========================================================
 
     function registerCommand(name, callback, help) {
@@ -240,7 +250,7 @@
 
         if (typeof context.registerSlashCommand !== 'function') {
             throw new Error(
-                'registerSlashCommand отсутствует в API SillyTavern.'
+                'registerSlashCommand отсутствует в SillyTavern.'
             );
         }
 
@@ -248,9 +258,11 @@
             name,
             callback,
             [],
-            help,
-            true,
-            true
+            help
+        );
+
+        console.log(
+            `[${EXTENSION_NAME}] Зарегистрирована команда /${name}`
         );
     }
 
@@ -262,16 +274,16 @@
     // /время +2ч
     // /время +1ч30м
     //
-    // Без аргумента:
     // /время
     // =========================================================
 
     registerCommand(
         'время',
-        async (args) => {
+        async (_namedArguments, unnamedArguments) => {
             try {
-                const value = String(args || '').trim();
+                const value = getArgumentValue(unnamedArguments);
 
+                // /время
                 if (!value) {
                     return formatTime(getCurrentTime());
                 }
@@ -291,10 +303,12 @@
                     );
                 }
 
-                return changeTime(duration).text;
+                const result = changeTime(duration);
+
+                return result.formatted;
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] /время:`,
+                    `[${EXTENSION_NAME}] Ошибка /время:`,
                     error
                 );
 
@@ -307,16 +321,15 @@
     // =========================================================
     // /прошловремени
     //
-    // Для ИИ:
     // /прошловремени 30
-    // /прошловремени 1ч20м
+    // /прошловремени 1ч30м
     // =========================================================
 
     registerCommand(
         'прошловремени',
-        async (args) => {
+        async (_namedArguments, unnamedArguments) => {
             try {
-                const value = String(args || '').trim();
+                const value = getArgumentValue(unnamedArguments);
 
                 if (!value) {
                     return (
@@ -333,14 +346,16 @@
                     duration < 0
                 ) {
                     return (
-                        'Ошибка. Нужно положительное количество времени.'
+                        'Ошибка. Укажи положительное количество времени.'
                     );
                 }
 
-                return changeTime(duration).text;
+                const result = changeTime(duration);
+
+                return result.formatted;
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] /прошловремени:`,
+                    `[${EXTENSION_NAME}] Ошибка /прошловремени:`,
                     error
                 );
 
@@ -358,22 +373,25 @@
 
     registerCommand(
         'установитьвремя',
-        async (args) => {
+        async (_namedArguments, unnamedArguments) => {
             try {
-                const value = String(args || '').trim();
-                const total = parseClockTime(value);
+                const value = getArgumentValue(unnamedArguments);
 
-                if (total === null) {
+                const totalMinutes = parseClockTime(value);
+
+                if (totalMinutes === null) {
                     return (
                         'Ошибка. Используй формат ЧЧ:ММ, ' +
                         'например /установитьвремя 18:30'
                     );
                 }
 
-                return saveTime(total).text;
+                const result = saveTime(totalMinutes);
+
+                return result.formatted;
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] /установитьвремя:`,
+                    `[${EXTENSION_NAME}] Ошибка /установитьвремя:`,
                     error
                 );
 
@@ -394,7 +412,7 @@
                 return formatTime(getCurrentTime());
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] /текущеевремя:`,
+                    `[${EXTENSION_NAME}] Ошибка /текущеевремя:`,
                     error
                 );
 
@@ -424,7 +442,7 @@
                 );
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] /времядебаг:`,
+                    `[${EXTENSION_NAME}] Ошибка /времядебаг:`,
                     error
                 );
 
@@ -434,7 +452,29 @@
         'Показать внутренние значения времени'
     );
 
-    console.log(
-        `[${EXTENSION_NAME}] Загружено успешно.`
-    );
+    // =========================================================
+    // Initialization
+    // =========================================================
+
+    try {
+        const current = getCurrentTime();
+
+        // Нормализуем существующие переменные.
+        saveTime(current);
+
+        console.log(
+            `[${EXTENSION_NAME}] Расширение успешно загружено.`
+        );
+
+        console.log(
+            `[${EXTENSION_NAME}] Текущее время: ${formatTime(current)}`
+        );
+    } catch (error) {
+        console.error(
+            `[${EXTENSION_NAME}] Ошибка инициализации:`,
+            error
+        );
+    }
+
 })();
+```
