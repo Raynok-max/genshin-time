@@ -38,6 +38,44 @@
         );
     }
 
+    function setExactTime(timeString) {
+        const value = String(timeString ?? '').trim();
+
+        const match = value.match(/^(\d{1,2}):(\d{1,2})$/);
+
+        if (!match) {
+            return 'Ошибка: используй формат ЧЧ:ММ, например 18:30';
+        }
+
+        const hours = Number(match[1]);
+        const minutes = Number(match[2]);
+
+        if (
+            !Number.isInteger(hours) ||
+            !Number.isInteger(minutes) ||
+            hours < 0 ||
+            hours > 23 ||
+            minutes < 0 ||
+            minutes > 59
+        ) {
+            return 'Ошибка: время должно быть от 00:00 до 23:59';
+        }
+
+        const totalMinutes = hours * 60 + minutes;
+
+        const variables = context.variables.local;
+
+        variables.set('Время', totalMinutes);
+        variables.set('Часы', hours);
+        variables.set('Минуты', minutes);
+
+        return (
+            String(hours).padStart(2, '0') +
+            ':' +
+            String(minutes).padStart(2, '0')
+        );
+    }
+
     context.registerSlashCommand(
         'время',
         function (namedArgs, unnamedArgs) {
@@ -56,6 +94,17 @@
         },
         [],
         'Указать, сколько игровых минут прошло',
+        true,
+        true
+    );
+
+    context.registerSlashCommand(
+        'установитьвремя',
+        function (namedArgs, unnamedArgs) {
+            return setExactTime(unnamedArgs);
+        },
+        [],
+        'Установить точное игровое время в формате ЧЧ:ММ',
         true,
         true
     );
