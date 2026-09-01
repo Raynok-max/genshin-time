@@ -2,6 +2,11 @@
     'use strict';
 
     const context = SillyTavern.getContext();
+    const MINUTES_PER_DAY = 1440;
+
+    // =========================================================
+    // ИЗМЕНЕНИЕ ИГРОВОГО ВРЕМЕНИ
+    // =========================================================
 
     function changeTime(minutes) {
         const value = Number(String(minutes ?? '').trim());
@@ -18,11 +23,13 @@
             current = 0;
         }
 
-        current = ((current % 1440) + 1440) % 1440;
+        current = ((current % MINUTES_PER_DAY) + MINUTES_PER_DAY)
+            % MINUTES_PER_DAY;
 
         let newTime = current + value;
 
-        newTime = ((newTime % 1440) + 1440) % 1440;
+        newTime = ((newTime % MINUTES_PER_DAY) + MINUTES_PER_DAY)
+            % MINUTES_PER_DAY;
 
         const hours = Math.floor(newTime / 60);
         const minutesPart = newTime % 60;
@@ -38,6 +45,10 @@
         );
     }
 
+    // =========================================================
+    // ПОЛУЧЕНИЕ ТЕКУЩЕГО ВРЕМЕНИ
+    // =========================================================
+
     function getCurrentTime() {
         const variables = context.variables.local;
 
@@ -47,7 +58,10 @@
             totalMinutes = 0;
         }
 
-        totalMinutes = ((totalMinutes % 1440) + 1440) % 1440;
+        totalMinutes = Math.floor(totalMinutes);
+
+        totalMinutes = ((totalMinutes % MINUTES_PER_DAY) + MINUTES_PER_DAY)
+            % MINUTES_PER_DAY;
 
         const hours = Math.floor(totalMinutes / 60);
         const minutes = totalMinutes % 60;
@@ -58,6 +72,10 @@
             String(minutes).padStart(2, '0')
         );
     }
+
+    // =========================================================
+    // УСТАНОВКА КОНКРЕТНОГО ВРЕМЕНИ
+    // =========================================================
 
     function setExactTime(timeString) {
         const value = String(timeString ?? '').trim();
@@ -98,7 +116,211 @@
     }
 
     // =========================================================
-    // /время
+    // РАЗБОР ЕСТЕСТВЕННОГО ОПИСАНИЯ ВРЕМЕНИ
+    // =========================================================
+
+    function parseTimeValue(value) {
+        if (value === null || value === undefined) {
+            return null;
+        }
+
+        let text = String(value)
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, ' ');
+
+        if (!text) {
+            return null;
+        }
+
+        // -----------------------------------------------------
+        // 1. Точное число минут
+        //
+        // 20
+        // 45
+        // 120
+        // -----------------------------------------------------
+
+        if (/^\d+$/.test(text)) {
+            return Number(text);
+        }
+
+        // -----------------------------------------------------
+        // 2. Часы и минуты
+        //
+        // 1ч
+        // 2ч
+        // 1ч 30м
+        // 1ч30м
+        // 45м
+        // -----------------------------------------------------
+
+        const compact = text.replace(/\s+/g, '');
+
+        let total = 0;
+        let found = false;
+
+        const hoursMatch = compact.match(/(\d+(?:[.,]\d+)?)ч/);
+        const minutesMatch = compact.match(/(\d+)м/);
+
+        if (hoursMatch) {
+            const hours = Number(
+                hoursMatch[1].replace(',', '.')
+            );
+
+            if (!Number.isFinite(hours)) {
+                return null;
+            }
+
+            total += hours * 60;
+            found = true;
+        }
+
+        if (minutesMatch) {
+            const minutes = Number(minutesMatch[1]);
+
+            if (!Number.isFinite(minutes)) {
+                return null;
+            }
+
+            total += minutes;
+            found = true;
+        }
+
+        if (found) {
+            return Math.round(total);
+        }
+
+        // -----------------------------------------------------
+        // 3. Естественные формулировки
+        // -----------------------------------------------------
+
+        const phrases = [
+            {
+                patterns: [
+                    'несколько секунд',
+                    'несколько секунд',
+                ],
+                minutes: 0
+            },
+            {
+                patterns: [
+                    'мгновение',
+                    'несколько мгновений',
+                    'почти сразу',
+                    'сразу'
+                ],
+                minutes: 0
+            },
+            {
+                patterns: [
+                    'пару минут',
+                    'пара минут'
+                ],
+                minutes: 2
+            },
+            {
+                patterns: [
+                    'несколько минут'
+                ],
+                minutes: 5
+            },
+            {
+                patterns: [
+                    'около десяти минут',
+                    'примерно десять минут'
+                ],
+                minutes: 10
+            },
+            {
+                patterns: [
+                    'около пятнадцати минут',
+                    'примерно пятнадцать минут'
+                ],
+                minutes: 15
+            },
+            {
+                patterns: [
+                    'полчаса',
+                    'пол часа',
+                    'тридцать минут'
+                ],
+                minutes: 30
+            },
+            {
+                patterns: [
+                    'около часа',
+                    'примерно час',
+                    'час'
+                ],
+                minutes: 60
+            },
+            {
+                patterns: [
+                    'полтора часа',
+                    'полтора часа'
+                ],
+                minutes: 90
+            },
+            {
+                patterns: [
+                    'несколько часов'
+                ],
+                minutes: 180
+            },
+            {
+                patterns: [
+                    'около двух часов',
+                    'примерно два часа'
+                ],
+                minutes: 120
+            },
+            {
+                patterns: [
+                    'около трех часов',
+                    'около трёх часов',
+                    'примерно три часа'
+                ],
+                minutes: 180
+            },
+            {
+                patterns: [
+                    'полдня',
+                    'пол дня'
+                ],
+                minutes: 360
+            },
+            {
+                patterns: [
+                    'весь день',
+                    'целый день',
+                    'практически весь день'
+                ],
+                minutes: 720
+            },
+            {
+                patterns: [
+                    'ночь',
+                    'всю ночь',
+                    'за ночь'
+                ],
+                minutes: 480
+            }
+        ];
+
+        for (const phrase of phrases) {
+            for (const pattern of phrase.patterns) {
+                if (text.includes(pattern)) {
+                    return phrase.minutes;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // =========================================================
+    // SLASH /ВРЕМЯ
     // =========================================================
 
     context.registerSlashCommand(
@@ -110,20 +332,22 @@
                 if (result.startsWith('Ошибка')) {
                     toastr.error(result);
                 } else {
-                    toastr.success('Игровое время: ' + result);
+                    toastr.success(
+                        'Игровое время: ' + result
+                    );
                 }
             }
 
             return result;
         },
         [],
-        'Добавить указанное количество минут к игровому времени',
+        'Добавить игровое время в минутах',
         true,
         true
     );
 
     // =========================================================
-    // /прошловремени
+    // SLASH /ПРОШЛОВРЕМЕНИ
     // =========================================================
 
     context.registerSlashCommand(
@@ -135,7 +359,9 @@
                 if (result.startsWith('Ошибка')) {
                     toastr.error(result);
                 } else {
-                    toastr.success('Игровое время: ' + result);
+                    toastr.success(
+                        'Игровое время: ' + result
+                    );
                 }
             }
 
@@ -148,7 +374,7 @@
     );
 
     // =========================================================
-    // /установитьвремя
+    // SLASH /УСТАНОВИТЬВРЕМЯ
     // =========================================================
 
     context.registerSlashCommand(
@@ -169,13 +395,13 @@
             return result;
         },
         [],
-        'Установить точное игровое время в формате ЧЧ:ММ',
+        'Установить точное время ЧЧ:ММ',
         true,
         true
     );
 
     // =========================================================
-    // /текущеевремя
+    // SLASH /ТЕКУЩЕЕВРЕМЯ
     // =========================================================
 
     context.registerSlashCommand(
@@ -198,16 +424,18 @@
     );
 
     // =========================================================
-    // АВТОМАТИЧЕСКОЕ ВРЕМЯ ОТ ИИ
+    // АВТОМАТИКА ИИ
     //
-    // ИИ пишет:
+    // Поддерживает:
     //
     // [TIME:20]
-    //
-    // Расширение:
-    // 1. прибавляет 20 минут;
-    // 2. обновляет переменные;
-    // 3. удаляет [TIME:20] из сообщения.
+    // [TIME:1ч]
+    // [TIME:1ч 30м]
+    // [TIME:45м]
+    // [TIME:несколько часов]
+    // [TIME:полдня]
+    // [TIME:весь день]
+    // [TIME:ночь]
     // =========================================================
 
     function processAIMessage(messageId) {
@@ -220,39 +448,58 @@
 
             const message = chat[messageId];
 
-            // Только ответы ИИ
+            // Только сообщения ИИ
             if (message.is_user || message.is_system) {
                 return;
             }
 
             let text = String(message.mes ?? '');
 
-            // Ищем маркер [TIME:число]
-            const match = text.match(/\[TIME:\s*(\d+)\s*\]/i);
+            // Ищем TIME-маркер
+            const match = text.match(
+                /\[TIME:\s*([^\]]+?)\s*\]/i
+            );
 
             if (!match) {
                 return;
             }
 
-            const minutes = Number(match[1]);
+            const rawValue = match[1].trim();
 
-            if (!Number.isFinite(minutes)) {
+            const minutes = parseTimeValue(rawValue);
+
+            if (
+                minutes === null ||
+                !Number.isFinite(minutes) ||
+                minutes < 0
+            ) {
+                console.warn(
+                    '[Genshin RPG Time] Не удалось определить время:',
+                    rawValue
+                );
+
+                if (typeof toastr !== 'undefined') {
+                    toastr.warning(
+                        'Не удалось определить время: ' +
+                        rawValue
+                    );
+                }
+
                 return;
             }
 
-            // Меняем игровое время
+            // Изменяем игровое время
             const result = changeTime(minutes);
 
-            // Удаляем служебный маркер из текста
+            // Удаляем TIME-маркер из сообщения
             text = text.replace(
-                /\s*\[TIME:\s*\d+\s*\]\s*/gi,
+                /\s*\[TIME:\s*[^\]]+?\s*\]\s*/gi,
                 ''
             );
 
-            // Убираем лишние пробелы и пустые строки в конце
-            text = text.replace(/\n{3,}/g, '\n\n').trimEnd();
+            // Убираем лишние пустые строки в конце
+            text = text.replace(/\n{3,}/g, '\n\n').trim();
 
-            // Записываем изменённое сообщение обратно
             message.mes = text;
             chat[messageId] = message;
 
@@ -277,22 +524,22 @@
             }
 
             console.log(
-                '[Genshin RPG Time] Обработан TIME:',
-                minutes,
+                '[Genshin RPG Time]',
+                `TIME "${rawValue}" = ${minutes} минут`,
                 '→',
                 result
             );
 
         } catch (error) {
             console.error(
-                '[Genshin RPG Time] Ошибка обработки TIME:',
+                '[Genshin RPG Time] Ошибка обработки времени ИИ:',
                 error
             );
         }
     }
 
     // =========================================================
-    // Подключение к событию получения сообщения
+    // ПОДКЛЮЧЕНИЕ К MESSAGE_RECEIVED
     // =========================================================
 
     if (
@@ -307,6 +554,10 @@
 
         console.log(
             '[Genshin RPG Time] Автоматическое время ИИ включено'
+        );
+    } else {
+        console.error(
+            '[Genshin RPG Time] MESSAGE_RECEIVED недоступен'
         );
     }
 
