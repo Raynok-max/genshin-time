@@ -198,13 +198,16 @@
     );
 
     // =========================================================
-    // АВТОМАТИКА ДЛЯ ИИ
+    // АВТОМАТИЧЕСКОЕ ВРЕМЯ ОТ ИИ
     //
-    // ИИ пишет в своём ответе:
+    // ИИ пишет:
     //
-    // [TIME:25]
+    // [TIME:20]
     //
-    // Расширение автоматически добавляет 25 минут.
+    // Расширение:
+    // 1. прибавляет 20 минут;
+    // 2. обновляет переменные;
+    // 3. удаляет [TIME:20] из сообщения.
     // =========================================================
 
     function processAIMessage(messageId) {
@@ -217,18 +220,14 @@
 
             const message = chat[messageId];
 
-            // Не трогаем пользовательские сообщения.
-            if (message.is_user) {
+            // Только ответы ИИ
+            if (message.is_user || message.is_system) {
                 return;
             }
 
-            if (message.is_system) {
-                return;
-            }
+            let text = String(message.mes ?? '');
 
-            const text = String(message.mes ?? '');
-
-            // Ищем [TIME:число]
+            // Ищем маркер [TIME:число]
             const match = text.match(/\[TIME:\s*(\d+)\s*\]/i);
 
             if (!match) {
@@ -241,13 +240,35 @@
                 return;
             }
 
+            // Меняем игровое время
             const result = changeTime(minutes);
 
-            console.log(
-                '[Genshin RPG Time] AI:',
-                `прошло ${minutes} мин.`,
-                `новое время ${result}`
+            // Удаляем служебный маркер из текста
+            text = text.replace(
+                /\s*\[TIME:\s*\d+\s*\]\s*/gi,
+                ''
             );
+
+            // Убираем лишние пробелы и пустые строки в конце
+            text = text.replace(/\n{3,}/g, '\n\n').trimEnd();
+
+            // Записываем изменённое сообщение обратно
+            message.mes = text;
+            chat[messageId] = message;
+
+            // Обновляем отображение сообщения
+            const messageElement = document.querySelector(
+                `.mes[mesid="${messageId}"] .mes_text`
+            );
+
+            if (messageElement) {
+                messageElement.innerHTML = text;
+            }
+
+            // Сохраняем чат
+            if (typeof context.saveChat === 'function') {
+                context.saveChat();
+            }
 
             if (typeof toastr !== 'undefined') {
                 toastr.info(
@@ -255,16 +276,23 @@
                 );
             }
 
+            console.log(
+                '[Genshin RPG Time] Обработан TIME:',
+                minutes,
+                '→',
+                result
+            );
+
         } catch (error) {
             console.error(
-                '[Genshin RPG Time] Ошибка обработки ответа ИИ:',
+                '[Genshin RPG Time] Ошибка обработки TIME:',
                 error
             );
         }
     }
 
     // =========================================================
-    // Подключаемся к событию получения сообщения
+    // Подключение к событию получения сообщения
     // =========================================================
 
     if (
@@ -279,10 +307,6 @@
 
         console.log(
             '[Genshin RPG Time] Автоматическое время ИИ включено'
-        );
-    } else {
-        console.error(
-            '[Genshin RPG Time] MESSAGE_RECEIVED недоступен'
         );
     }
 
