@@ -38,6 +38,27 @@
         );
     }
 
+    function getCurrentTime() {
+        const variables = context.variables.local;
+
+        let totalMinutes = Number(variables.get('Время'));
+
+        if (!Number.isFinite(totalMinutes)) {
+            totalMinutes = 0;
+        }
+
+        totalMinutes = ((totalMinutes % 1440) + 1440) % 1440;
+
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+
+        return (
+            String(hours).padStart(2, '0') +
+            ':' +
+            String(minutes).padStart(2, '0')
+        );
+    }
+
     function setExactTime(timeString) {
         const value = String(timeString ?? '').trim();
 
@@ -76,32 +97,24 @@
         );
     }
 
-    function getCurrentTime() {
-        const variables = context.variables.local;
-
-        let totalMinutes = Number(variables.get('Время'));
-
-        if (!Number.isFinite(totalMinutes)) {
-            totalMinutes = 0;
-        }
-
-        totalMinutes = Math.floor(totalMinutes);
-        totalMinutes = ((totalMinutes % 1440) + 1440) % 1440;
-
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-
-        return (
-            String(hours).padStart(2, '0') +
-            ':' +
-            String(minutes).padStart(2, '0')
-        );
-    }
+    // =========================================================
+    // /время
+    // =========================================================
 
     context.registerSlashCommand(
         'время',
         function (namedArgs, unnamedArgs) {
-            return changeTime(unnamedArgs);
+            const result = changeTime(unnamedArgs);
+
+            if (typeof toastr !== 'undefined') {
+                if (result.startsWith('Ошибка')) {
+                    toastr.error(result);
+                } else {
+                    toastr.success('Игровое время: ' + result);
+                }
+            }
+
+            return result;
         },
         [],
         'Добавить указанное количество минут к игровому времени',
@@ -109,10 +122,24 @@
         true
     );
 
+    // =========================================================
+    // /прошловремени
+    // =========================================================
+
     context.registerSlashCommand(
         'прошловремени',
         function (namedArgs, unnamedArgs) {
-            return changeTime(unnamedArgs);
+            const result = changeTime(unnamedArgs);
+
+            if (typeof toastr !== 'undefined') {
+                if (result.startsWith('Ошибка')) {
+                    toastr.error(result);
+                } else {
+                    toastr.success('Игровое время: ' + result);
+                }
+            }
+
+            return result;
         },
         [],
         'Указать, сколько игровых минут прошло',
@@ -120,10 +147,24 @@
         true
     );
 
+    // =========================================================
+    // /установитьвремя
+    // =========================================================
+
     context.registerSlashCommand(
         'установитьвремя',
         function (namedArgs, unnamedArgs) {
-            return setExactTime(unnamedArgs);
+            const result = setExactTime(unnamedArgs);
+
+            if (typeof toastr !== 'undefined') {
+                if (result.startsWith('Ошибка')) {
+                    toastr.error(result);
+                } else {
+                    toastr.success('Игровое время установлено: ' + result);
+                }
+            }
+
+            return result;
         },
         [],
         'Установить точное игровое время в формате ЧЧ:ММ',
@@ -131,10 +172,20 @@
         true
     );
 
+    // =========================================================
+    // /текущеевремя
+    // =========================================================
+
     context.registerSlashCommand(
         'текущеевремя',
         function () {
-            return getCurrentTime();
+            const result = getCurrentTime();
+
+            if (typeof toastr !== 'undefined') {
+                toastr.info('Текущее игровое время: ' + result);
+            }
+
+            return result;
         },
         [],
         'Показать текущее игровое время',
