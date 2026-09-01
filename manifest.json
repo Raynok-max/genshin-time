@@ -1,0 +1,13 @@
+{
+  "display_name": "Genshin RPG Time",
+  "loading_order": 10,
+  "requires": [],
+  "optional": [],
+  "dependencies": [],
+  "js": "index.js",
+  "author": "ChatGPT",
+  "version": "1.0.0",
+  "homePage": "https://github.com/",
+  "auto_update": false,
+  "minimum_client_version": "1.18.0"
+}
