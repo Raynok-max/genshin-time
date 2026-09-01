@@ -1,100 +1,116 @@
 // Genshin RPG Time
-// Extension for SillyTavern 1.18.x
+// SillyTavern 1.18.0
 
 (function () {
     'use strict';
 
     const EXTENSION_NAME = 'Genshin RPG Time';
 
-    // =========================================================
-    // Получение контекста SillyTavern
-    // =========================================================
+    // ---------------------------------------------------------
+    // Получаем контекст SillyTavern
+    // ---------------------------------------------------------
 
-    function getSTContext() {
-        if (typeof SillyTavern === 'undefined') {
-            throw new Error('SillyTavern API недоступен.');
-        }
-
-        const context = SillyTavern.getContext();
-
-        if (!context) {
-            throw new Error('Не удалось получить контекст SillyTavern.');
-        }
-
-        return context;
+    function getContext() {
+        return SillyTavern.getContext();
     }
 
-    // =========================================================
-    // Работа с переменными
-    // =========================================================
+    // ---------------------------------------------------------
+    // Выполнение встроенной slash-команды
+    // ---------------------------------------------------------
 
-    function getVariables() {
-        const context = getSTContext();
+    async function executeCommand(command) {
+        const context = getContext();
 
-        if (!context.variables) {
-            throw new Error('Переменные SillyTavern недоступны.');
+        if (!context.executeSlashCommands) {
+            throw new Error(
+                'API executeSlashCommands не найдено в этой версии SillyTavern.'
+            );
         }
 
-        return context.variables;
+        return await context.executeSlashCommands(command);
     }
 
-    function getVariable(name, defaultValue = 0) {
-        const variables = getVariables();
-        const value = Number(variables[name]);
+    // ---------------------------------------------------------
+    // Получить локальную переменную
+    // ---------------------------------------------------------
+
+    async function getVar(name) {
+        const result = await executeCommand(`/getvar ${name}`);
+
+        const number = Number(result);
+
+        return Number.isFinite(number) ? number : 0;
+    }
+
+    // ---------------------------------------------------------
+    // Установить локальную переменную
+    // ---------------------------------------------------------
+
+    async function setVar(name, value) {
+        await executeCommand(`/setvar ${name} ${value}`);
+    }
+
+    // ---------------------------------------------------------
+    // Нормализация времени
+    //
+    // 0     = 00:00
+    // 60    = 01:00
+    // 720   = 12:00
+    // 1439  = 23:59
+    // ---------------------------------------------------------
+
+    function normalizeTime(value) {
+        value = Math.floor(Number(value));
 
         if (!Number.isFinite(value)) {
-            return defaultValue;
+            value = 0;
         }
 
-        return value;
+        return ((value % 1440) + 1440) % 1440;
     }
 
-    function setVariable(name, value) {
-        const variables = getVariables();
-        variables[name] = value;
+    // ---------------------------------------------------------
+    // Сохранить время
+    // ---------------------------------------------------------
+
+    async function saveTime(totalMinutes) {
+        totalMinutes = normalizeTime(totalMinutes);
+
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+
+        await setVar('Время', totalMinutes);
+        await setVar('Часы', hours);
+        await setVar('Минуты', minutes);
+
+        return {
+            total: totalMinutes,
+            hours,
+            minutes,
+            formatted:
+                String(hours).padStart(2, '0') +
+                ':' +
+                String(minutes).padStart(2, '0')
+        };
     }
 
-    // =========================================================
-    // Внутреннее представление времени
-    //
-    // Время = количество минут с начала суток.
-    //
-    // 00:00 = 0
-    // 01:00 = 60
-    // 12:00 = 720
-    // 23:59 = 1439
-    // =========================================================
+    // ---------------------------------------------------------
+    // Получить текущее время
+    // ---------------------------------------------------------
 
-    const MINUTES_PER_DAY = 24 * 60;
-
-    function normalizeTime(minutes) {
-        minutes = Math.floor(Number(minutes));
-
-        if (!Number.isFinite(minutes)) {
-            minutes = 0;
-        }
-
-        return ((minutes % MINUTES_PER_DAY) + MINUTES_PER_DAY)
-            % MINUTES_PER_DAY;
+    async function getCurrentTime() {
+        return normalizeTime(await getVar('Время'));
     }
 
-    function getCurrentTime() {
-        return normalizeTime(getVariable('Время', 0));
-    }
-
-    function getHours(minutes) {
-        return Math.floor(minutes / 60);
-    }
-
-    function getMinutes(minutes) {
-        return minutes % 60;
-    }
+    // ---------------------------------------------------------
+    // Форматирование времени
+    // ---------------------------------------------------------
 
     function formatTime(totalMinutes) {
         totalMinutes = normalizeTime(totalMinutes);
 
-        const hours = getHours(totalMinutes);
-        const minutes = getMinutes(totalMinutes);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
 
         return (
             String(hours).padStart(2, '0') +
@@ -103,41 +119,8 @@
         );
     }
 
-    // =========================================================
-    // Сохранение времени
-    // =========================================================
-
-    function saveTime(totalMinutes) {
-        totalMinutes = normalizeTime(totalMinutes);
-
-        const hours = getHours(totalMinutes);
-        const minutes = getMinutes(totalMinutes);
-
-        setVariable('Время', totalMinutes);
-        setVariable('Часы', hours);
-        setVariable('Минуты', minutes);
-
-        return {
-            total: totalMinutes,
-            hours: hours,
-            minutes: minutes,
-            formatted: formatTime(totalMinutes),
-        };
-    }
-
-    // =========================================================
-    // Изменение времени
-    // =========================================================
-
-    function addTime(amount) {
-        const currentTime = getCurrentTime();
-        return saveTime(currentTime + amount);
-    }
-
-    // =========================================================
-    // Парсинг длительности
-    //
-    // Поддерживает:
+    // ---------------------------------------------------------
+    // Парсер длительности
     //
     // 30
     // +30
@@ -145,12 +128,10 @@
     // 2ч
     // +2ч
     // 30м
-    // +30м
     // 1ч30м
     // +1ч30м
-    // 2ч15м
-    // -1ч
-    // =========================================================
+    // -1ч30м
+    // ---------------------------------------------------------
 
     function parseDuration(input) {
         if (input === null || input === undefined) {
@@ -166,91 +147,61 @@
             return null;
         }
 
-        // -----------------------------------------------------
         // Обычное число = минуты
-        // -----------------------------------------------------
 
         if (/^[+-]?\d+$/.test(text)) {
-            const minutes = Number(text);
+            const value = Number(text);
 
-            if (Number.isFinite(minutes)) {
-                return minutes;
-            }
-
-            return null;
+            return Number.isFinite(value) ? value : null;
         }
-
-        // -----------------------------------------------------
-        // Убираем "+" с начала, но сохраняем "-" если есть.
-        // -----------------------------------------------------
 
         let sign = 1;
 
         if (text.startsWith('+')) {
-            text = text.substring(1);
+            text = text.slice(1);
         } else if (text.startsWith('-')) {
             sign = -1;
-            text = text.substring(1);
+            text = text.slice(1);
         }
 
         if (!text) {
             return null;
         }
 
-        // -----------------------------------------------------
-        // Разбор часов
-        // -----------------------------------------------------
+        let total = 0;
+        let found = false;
 
-        const hourMatch = text.match(/^(\d+(?:\.\d+)?)ч/);
+        // Часы
 
-        // -----------------------------------------------------
-        // Разбор минут
-        // -----------------------------------------------------
+        const hoursMatch = text.match(/(\d+(?:\.\d+)?)ч/);
 
-        const minuteMatch = text.match(/(\d+)м$/);
-
-        let hours = 0;
-        let minutes = 0;
-        let foundSomething = false;
-
-        if (hourMatch) {
-            hours = Number(hourMatch[1]);
-            foundSomething = true;
+        if (hoursMatch) {
+            total += Number(hoursMatch[1]) * 60;
+            found = true;
         }
 
-        if (minuteMatch) {
-            minutes = Number(minuteMatch[1]);
-            foundSomething = true;
+        // Минуты
+
+        const minutesMatch = text.match(/(\d+)м/);
+
+        if (minutesMatch) {
+            total += Number(minutesMatch[1]);
+            found = true;
         }
 
-        if (!foundSomething) {
+        if (!found || !Number.isFinite(total)) {
             return null;
         }
 
-        if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
-            return null;
-        }
-
-        return sign * (hours * 60 + minutes);
+        return sign * total;
     }
 
-    // =========================================================
-    // Парсинг конкретного времени
-    //
-    // Формат:
-    //
-    // 00:00
-    // 09:30
-    // 18:45
-    // 23:59
-    // =========================================================
+    // ---------------------------------------------------------
+    // Парсер ЧЧ:ММ
+    // ---------------------------------------------------------
 
     function parseClockTime(input) {
-        if (input === null || input === undefined) {
-            return null;
-        }
-
-        const text = String(input).trim();
+        const text = String(input || '').trim();
 
         const match = text.match(/^(\d{1,2}):(\d{1,2})$/);
 
@@ -279,61 +230,44 @@
         return hours * 60 + minutes;
     }
 
-    // =========================================================
+    // ---------------------------------------------------------
+    // Изменить время
+    // ---------------------------------------------------------
+
+    async function changeTime(amount) {
+        const current = await getCurrentTime();
+        return await saveTime(current + amount);
+    }
+
+    // ---------------------------------------------------------
     // Регистрация slash-команд
-    // =========================================================
+    // ---------------------------------------------------------
 
     function registerCommand(name, callback, help) {
-        const context = getSTContext();
+        const context = getContext();
 
-        if (typeof context.registerSlashCommand !== 'function') {
+        if (
+            typeof context.registerSlashCommand !== 'function'
+        ) {
             console.error(
-                `[${EXTENSION_NAME}] registerSlashCommand не найден.`
+                `[${EXTENSION_NAME}] ` +
+                'registerSlashCommand отсутствует.'
             );
-            return false;
+            return;
         }
 
-        try {
-            context.registerSlashCommand(
-                name,
-                callback,
-                [],
-                help,
-                true,
-                true
-            );
-
-            console.log(
-                `[${EXTENSION_NAME}] Команда /${name} зарегистрирована.`
-            );
-
-            return true;
-        } catch (error) {
-            console.error(
-                `[${EXTENSION_NAME}] Ошибка регистрации /${name}:`,
-                error
-            );
-
-            return false;
-        }
+        context.registerSlashCommand(
+            name,
+            callback,
+            [],
+            help,
+            true,
+            true
+        );
     }
 
     // =========================================================
     // /время
-    //
-    // Примеры:
-    //
-    // /время 30
-    // /время -15
-    // /время +2ч
-    // /время +1ч30м
-    // /время 45м
-    //
-    // Без аргумента:
-    //
-    // /время
-    //
-    // покажет текущее время.
     // =========================================================
 
     registerCommand(
@@ -342,9 +276,9 @@
             try {
                 const value = String(args || '').trim();
 
-                // Просто показать текущее время
+                // /время
                 if (!value) {
-                    return formatTime(getCurrentTime());
+                    return formatTime(await getCurrentTime());
                 }
 
                 const duration = parseDuration(value);
@@ -354,21 +288,23 @@
                     !Number.isFinite(duration)
                 ) {
                     return (
-                        'Ошибка: укажи время, например ' +
-                        '/время 30, /время +2ч или /время +1ч30м'
+                        'Ошибка. Примеры: ' +
+                        '/время 30, /время -15, ' +
+                        '/время +2ч, /время +1ч30м'
                     );
                 }
 
-                const result = addTime(duration);
+                const result = await changeTime(duration);
 
                 return result.formatted;
+
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] Ошибка /время:`,
+                    `[${EXTENSION_NAME}] /время:`,
                     error
                 );
 
-                return `Ошибка /время: ${error.message}`;
+                return `Ошибка: ${error.message}`;
             }
         },
         'Изменить игровое время'
@@ -376,14 +312,6 @@
 
     // =========================================================
     // /прошловремени
-    //
-    // Специально для ИИ:
-    //
-    // /прошловремени 5
-    // /прошловремени 30
-    // /прошловремени 1ч20м
-    //
-    // Всегда добавляет положительное количество времени.
     // =========================================================
 
     registerCommand(
@@ -394,8 +322,8 @@
 
                 if (!value) {
                     return (
-                        'Ошибка: укажи, сколько времени прошло. ' +
-                        'Например: /прошловремени 30'
+                        'Ошибка. Например: ' +
+                        '/прошловремени 30'
                     );
                 }
 
@@ -407,21 +335,22 @@
                     duration < 0
                 ) {
                     return (
-                        'Ошибка: используй положительное количество времени, ' +
-                        'например /прошловремени 30 или /прошловремени 1ч30м'
+                        'Ошибка. Нужно положительное время. ' +
+                        'Например: /прошловремени 30'
                     );
                 }
 
-                const result = addTime(duration);
+                const result = await changeTime(duration);
 
                 return result.formatted;
+
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] Ошибка /прошловремени:`,
+                    `[${EXTENSION_NAME}] /прошловремени:`,
                     error
                 );
 
-                return `Ошибка /прошловремени: ${error.message}`;
+                return `Ошибка: ${error.message}`;
             }
         },
         'Добавить прошедшее игровое время'
@@ -429,12 +358,6 @@
 
     // =========================================================
     // /установитьвремя
-    //
-    // Примеры:
-    //
-    // /установитьвремя 09:30
-    // /установитьвремя 18:45
-    // /установитьвремя 23:59
     // =========================================================
 
     registerCommand(
@@ -443,55 +366,49 @@
             try {
                 const value = String(args || '').trim();
 
-                if (!value) {
-                    return (
-                        'Ошибка: используй формат ЧЧ:ММ, ' +
-                        'например /установитьвремя 18:30'
-                    );
-                }
-
                 const totalMinutes = parseClockTime(value);
 
                 if (totalMinutes === null) {
                     return (
-                        'Ошибка: неверное время. ' +
-                        'Используй формат ЧЧ:ММ, например 18:30'
+                        'Ошибка. Используй формат ЧЧ:ММ. ' +
+                        'Например: /установитьвремя 18:30'
                     );
                 }
 
-                const result = saveTime(totalMinutes);
+                const result = await saveTime(totalMinutes);
 
                 return result.formatted;
+
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] Ошибка /установитьвремя:`,
+                    `[${EXTENSION_NAME}] /установитьвремя:`,
                     error
                 );
 
-                return `Ошибка /установитьвремя: ${error.message}`;
+                return `Ошибка: ${error.message}`;
             }
         },
-        'Установить конкретное время'
+        'Установить конкретное игровое время'
     );
 
     // =========================================================
     // /текущеевремя
-    //
-    // Просто возвращает текущее время.
     // =========================================================
 
     registerCommand(
         'текущеевремя',
         async () => {
             try {
-                return formatTime(getCurrentTime());
+                return formatTime(
+                    await getCurrentTime()
+                );
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] Ошибка /текущеевремя:`,
+                    `[${EXTENSION_NAME}] /текущеевремя:`,
                     error
                 );
 
-                return `Ошибка /текущеевремя: ${error.message}`;
+                return `Ошибка: ${error.message}`;
             }
         },
         'Показать текущее игровое время'
@@ -499,19 +416,16 @@
 
     // =========================================================
     // /времядебаг
-    //
-    // Показывает все значения переменных.
-    //
-    // Удобно для проверки, что всё работает.
     // =========================================================
 
     registerCommand(
         'времядебаг',
         async () => {
             try {
-                const total = getCurrentTime();
-                const hours = getHours(total);
-                const minutes = getMinutes(total);
+                const total = await getCurrentTime();
+
+                const hours = Math.floor(total / 60);
+                const minutes = total % 60;
 
                 return (
                     `Время=${total}; ` +
@@ -519,40 +433,21 @@
                     `Минуты=${minutes}; ` +
                     `Отображение=${formatTime(total)}`
                 );
+
             } catch (error) {
                 console.error(
-                    `[${EXTENSION_NAME}] Ошибка /времядебаг:`,
+                    `[${EXTENSION_NAME}] /времядебаг:`,
                     error
                 );
 
-                return `Ошибка /времядебаг: ${error.message}`;
+                return `Ошибка: ${error.message}`;
             }
         },
-        'Показать внутренние значения игровой системы времени'
+        'Показать значения переменных времени'
     );
 
-    // =========================================================
-    // Инициализация
-    //
-    // При загрузке расширения приводим переменные в порядок.
-    // =========================================================
-
-    try {
-        const current = getCurrentTime();
-        saveTime(current);
-
-        console.log(
-            `[${EXTENSION_NAME}] Расширение успешно загружено.`
-        );
-
-        console.log(
-            `[${EXTENSION_NAME}] Текущее время: ${formatTime(current)}`
-        );
-    } catch (error) {
-        console.error(
-            `[${EXTENSION_NAME}] Ошибка инициализации:`,
-            error
-        );
-    }
+    console.log(
+        `[${EXTENSION_NAME}] Загружено.`
+    );
 
 })();
