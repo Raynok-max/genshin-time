@@ -160,7 +160,9 @@
                 if (result.startsWith('Ошибка')) {
                     toastr.error(result);
                 } else {
-                    toastr.success('Игровое время установлено: ' + result);
+                    toastr.success(
+                        'Игровое время установлено: ' + result
+                    );
                 }
             }
 
@@ -182,7 +184,9 @@
             const result = getCurrentTime();
 
             if (typeof toastr !== 'undefined') {
-                toastr.info('Текущее игровое время: ' + result);
+                toastr.info(
+                    'Текущее игровое время: ' + result
+                );
             }
 
             return result;
@@ -192,6 +196,95 @@
         true,
         true
     );
+
+    // =========================================================
+    // АВТОМАТИКА ДЛЯ ИИ
+    //
+    // ИИ пишет в своём ответе:
+    //
+    // [TIME:25]
+    //
+    // Расширение автоматически добавляет 25 минут.
+    // =========================================================
+
+    function processAIMessage(messageId) {
+        try {
+            const chat = context.chat;
+
+            if (!chat || !chat[messageId]) {
+                return;
+            }
+
+            const message = chat[messageId];
+
+            // Не трогаем пользовательские сообщения.
+            if (message.is_user) {
+                return;
+            }
+
+            if (message.is_system) {
+                return;
+            }
+
+            const text = String(message.mes ?? '');
+
+            // Ищем [TIME:число]
+            const match = text.match(/\[TIME:\s*(\d+)\s*\]/i);
+
+            if (!match) {
+                return;
+            }
+
+            const minutes = Number(match[1]);
+
+            if (!Number.isFinite(minutes)) {
+                return;
+            }
+
+            const result = changeTime(minutes);
+
+            console.log(
+                '[Genshin RPG Time] AI:',
+                `прошло ${minutes} мин.`,
+                `новое время ${result}`
+            );
+
+            if (typeof toastr !== 'undefined') {
+                toastr.info(
+                    `ИИ: +${minutes} мин. → ${result}`
+                );
+            }
+
+        } catch (error) {
+            console.error(
+                '[Genshin RPG Time] Ошибка обработки ответа ИИ:',
+                error
+            );
+        }
+    }
+
+    // =========================================================
+    // Подключаемся к событию получения сообщения
+    // =========================================================
+
+    if (
+        context.eventSource &&
+        context.event_types &&
+        context.event_types.MESSAGE_RECEIVED
+    ) {
+        context.eventSource.on(
+            context.event_types.MESSAGE_RECEIVED,
+            processAIMessage
+        );
+
+        console.log(
+            '[Genshin RPG Time] Автоматическое время ИИ включено'
+        );
+    } else {
+        console.error(
+            '[Genshin RPG Time] MESSAGE_RECEIVED недоступен'
+        );
+    }
 
     console.log('[Genshin RPG Time] Загружено');
 })();
